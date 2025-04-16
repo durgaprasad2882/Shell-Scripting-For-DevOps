@@ -18,7 +18,7 @@ code_clone() {
 # Function to install required dependencies
 install_requirements() {
     echo "Installing dependencies..."
-    sudo apt-get update && sudo apt-get install -y docker.io nginx docker-compose || {
+    sudo apt-get update && sudo apt-get install -y docker.io docker-compose || {
         echo "Failed to install dependencies."
         return 1
     }
@@ -31,17 +31,28 @@ required_restarts() {
         echo "Failed to change ownership of docker.sock."
         return 1
     }
+}
 
-    # Uncomment the following lines if needed:
-    # sudo systemctl enable docker
-    # sudo systemctl enable nginx
-    # sudo systemctl restart docker
+# Function to create .dockerignore to avoid permission issues
+create_dockerignore() {
+    echo "Creating .dockerignore file to avoid permission errors..."
+    cat <<EOF > .dockerignore
+data/
+*.dblwr
+*.pid
+*.sock
+*.log
+__pycache__/
+*.pyc
+.env
+EOF
 }
 
 # Function to deploy the Django app
 deploy() {
     echo "Building and deploying the Django app..."
-    docker build -t notes-app . && docker-compose up -d || {
+    docker-compose down
+    docker-compose up --build -d || {
         echo "Failed to build and deploy the app."
         return 1
     }
@@ -50,22 +61,32 @@ deploy() {
 # Main deployment script
 echo "********** DEPLOYMENT STARTED *********"
 
-# Clone the code
+# Step 1: Clone the code
 if ! code_clone; then
-    cd django-notes-app || exit 1
+    echo "Cloning failed. Exiting..."
+    exit 1
 fi
 
-# Install dependencies
+# Step 2: Change directory into the Django app
+cd django-notes-app || {
+    echo "Failed to enter the django-notes-app directory. Exiting..."
+    exit 1
+}
+
+# Step 3: Install dependencies
 if ! install_requirements; then
     exit 1
 fi
 
-# Perform required restarts
+# Step 4: Perform required restarts
 if ! required_restarts; then
     exit 1
 fi
 
-# Deploy the app
+# Step 4.5: Create .dockerignore file
+create_dockerignore
+
+# Step 5: Deploy the app
 if ! deploy; then
     echo "Deployment failed. Mailing the admin..."
     # Add your sendmail or notification logic here
@@ -73,3 +94,4 @@ if ! deploy; then
 fi
 
 echo "********** DEPLOYMENT DONE *********"
+echo "App should now be accessible at: http://<your-server-ip>:8080"
